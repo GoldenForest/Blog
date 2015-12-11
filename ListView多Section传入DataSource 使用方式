@@ -1,0 +1,161 @@
+开发中发现ReactNative官方文档中对ListView的使用方式只给了最简单的一个描述，只能显示一个section，对于需要多个section header显示时线索甚少，只能google一番，所幸得到如下使用小结，
+先看官方例子，相当的简单明了（对比iOS TableView的使用）：
+
+   	getInitialState: function() {
+   	  	 var ds = new ListView.DataSource({rowHasChanged: (r1, r2) => r1 !== r2});
+   	  	 return {
+     	  	  	 dataSource: ds.cloneWithRows(['row 1', 'row 2']),
+   	  	 };
+  	},
+
+  	 render: function() {
+    	  	return (
+     	  	 <ListView
+      	  	  	  dataSource={this.state.dataSource}
+      	  	  	  renderRow={(rowData) => <Text>{rowData}</Text>}
+     	  	 />
+   	  	 );
+  	},
+
+参考：https://github.com/facebook/react-native/blob/master/Libraries/CustomComponents/ListView/ListViewDataSource.js 
+对于我这个业余的JS选手勉强探到
+使用过程中需要
+1、var ds = new ListView.DataSource 构造ListView.DataSource需要的参数：
+
+  	  	1、rowHasChanged: differType; 
+          	必传参数 (r1, r2) => r1 !== r2,
+	  	2、sectionHeaderHasChanged: ?differType;
+         	 当有多个section时必传，类型同上(s1, s2) => s1 !== s2
+  	  	3、getRowData: ?typeof defaultGetRowData;
+         	 怎样从传入的数据集合中获取行数据
+  	  	4、getSectionHeaderData: ?typeof defaultGetSectionHeaderData;
+         	 怎样从传入的数据集合中获取section需要加载数据
+
+2、往DataSource中加载数据
+      单个section列表调用cloneWithRows，其实调用了cloneWithRowsAndSections，如下：
+
+       cloneWithRows(
+              dataBlob: Array<any> | {[key: string]: any},
+              rowIdentities: ?Array<string>
+       )
+       this.cloneWithRowsAndSections({s1: dataBlob}, ['s1'], rowIds);
+
+      多个section列表则必须调用cloneWithRowsAndSections
+
+      cloneWithRowsAndSections(
+            dataBlob: any,
+            sectionIdentities: ?Array<string>,
+            rowIdentities: ?Array<Array<string>>
+      )
+
+     传入的dataBlob默认支持格式有三种
+      *      { sectionID_1: { rowID_1: <rowData1>, ... }, ... }
+
+      *      { sectionID_1: [ <rowData1>, <rowData2>, ... ], ... }
+
+      *      [ [ <rowData1>, <rowData2>, ... ], ... ]
+
+     如下：
+
+	getInitialState: function() {
+               数据格式1
+		var dataBlob = [[{taskLogo: '任务1', taskName:'任务内容'},
+                       {taskLogo: '任务2', taskName:'任务内容'},
+                       {taskLogo: '任务3', taskName:'任务内容'},
+                       {taskLogo: '任务4', taskName:'任务内容'},
+                      ],[{taskLogo: '任务1', taskName:'任务内容'},
+                       {taskLogo: '任务2', taskName:'任务内容'},
+                       {taskLogo: '任务3', taskName:'任务内容'},
+                       {taskLogo: '任务4', taskName:'任务内容'},
+                      ]];
+              数据格式2
+		var dataBlob = {'ID_1':[{taskLogo: '任务1', taskName:'任务内容'},
+                       {taskLogo: '任务2', taskName:'任务内容'},
+                       {taskLogo: '任务3', taskName:'任务内容'},
+                       {taskLogo: '任务4', taskName:'任务内容'},
+                      ],'ID_2':[{taskLogo: '任务1', taskName:'任务内容'},
+                       {taskLogo: '任务2', taskName:'任务内容'},
+                       {taskLogo: '任务3', taskName:'任务内容'},
+                       {taskLogo: '任务4', taskName:'任务内容'},
+                      ]};
+              数据格式3
+		var dataBlob = {'ID_1':{'ID1':{taskLogo: '任务1', taskName:'任务内容'},
+                       			'ID2':{taskLogo: '任务2', taskName:'任务内容'},
+                       			'ID3':{taskLogo: '任务3', taskName:'任务内容'}
+                       			} 'ID_2':{'ID1':{taskLogo: '任务1', taskName:'任务内容'},
+                       			'ID2':{taskLogo: '任务1', taskName:'任务内容'},
+                       			'ID3':{taskLogo: '任务1', taskName:'任务内容'}
+                       			}
+                  };
+
+		var ds = new ListView.DataSource({
+
+			  rowHasChanged: (r1, r2) => r1 !== r2,
+			  sectionHeaderHasChanged: (s1, s2) => s1 !== s2
+		})  
+		
+		return {
+			loaded : false,
+			dataSource : ds.cloneWithRowsAndSections(dataBlob)
+		}
+
+	},
+ 当传入的数据集合满足默认的三种方式 getRowData和getSectionHeaderData参数可以不传，此时会调用默认的数据获取方法从传入的数据中获取需要的数据
+	defaultGetRowData dataBlob[sectionID][rowID];
+	defaultGetSectionHeaderData dataBlob[sectionID]
+        此时cloneWithRowsAndSections也只用传入数据集合即可  
+       当需要使用自定义的数据格式显示多section列表时，则需要传入怎样从数据集合中获取row和header数据的方法
+       示例如下
+
+	var dataBlob = {
+			 'sectionID1' : '当天任务',
+			 'sectionID1:rowID1' : {taskLogo: '任务1', taskName:'任务内容'},
+			 'sectionID1:rowID2' :{taskLogo: '任务2', taskName:'任务内容'},
+			 'sectionID2' : '昨日任务',
+			 'sectionID2:rowID1' : {taskLogo: '任务1', taskName:'任务内容'},
+			 'sectionID2:rowID2' : {taskLogo: '任务2', taskName:'任务内容'},
+			 'sectionID3' : '已完成任务',
+			 'sectionID3:rowID1' : {taskLogo: '任务1', taskName:'任务内容'},
+			 'sectionID3:rowID2' : {taskLogo: '任务2', taskName:'任务内容'},
+			 
+		}
+		var sectionIDs = [ 'sectionID1', 'sectionID2','sectionID3'];
+
+		var rowIDs = [ [ 'rowID1', 'rowID2' ], [ 'rowID1', 'rowID2' ], [ 'rowID1', 'rowID2' ]];
+
+		var getSectionData = (dataBlob, sectionID) => {
+			return dataBlob[sectionID];
+		}
+
+		var getRowData = (dataBlob, sectionID, rowID) => {
+			return dataBlob[sectionID + ':' + rowID];
+		}
+		var ds = new ListView.DataSource({
+			  getSectionData: getSectionData,
+			  getRowData: getRowData,
+			  rowHasChanged: (r1, r2) => r1 !== r2,
+			  sectionHeaderHasChanged: (s1, s2) => s1 !== s2
+		})  
+
+		return {
+			loaded : false,
+			dataSource : ds.cloneWithRowsAndSections(dataBlob, sectionIDs, rowIDs)
+		}
+最后需要在render中需要对ListView添加renderSectionHeader的属性
+
+	  render: function() {
+	  	  var myDate = new Date();
+	  	  return (
+				  <ListView
+			  	  	  dataSource={this.state.dataSource}
+			 	  	   renderRow={this._renderRow}
+			 	  	   renderSectionHeader={()=>{
+				  		  	  return(<View>
+				  				  	  <Text style={[styles.text,{backgroundColor:'white'}]}>{myDate.toLocaleDateString()}</Text>
+				  				  	  <Text style={[styles.text,{backgroundColor:'white'}]}>今天任务</Text>
+				  				  	  <View style={styles.separator} />
+				  		  	  	   </View>);
+					  	    }
+			 	  	   }
+				  	  />	
+	  	  	  );
